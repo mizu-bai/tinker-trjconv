@@ -1,5 +1,6 @@
 import warnings
 from dataclasses import dataclass, field
+from io import StringIO
 from typing import List
 
 import numpy as np
@@ -59,13 +60,16 @@ class TXYZMol:
         """Load molecule from input tinker xyz file.
 
         Args:
-            file (str): Path to input tinker xyz file
+            file (str): Path to input tinker xyz file.
 
         Returns:
-            txyz_mol (TXYZMol): A tinker xyz molecule
+            txyz_mol (TXYZMol): A tinker molecule.
         """
-        with open(file) as f:
-            contents = f.readlines()
+        if isinstance(file, str):
+            with open(file) as f:
+                contents = f.readlines()
+        elif isinstance(file, StringIO):
+            contents = file.getvalue().split("\n")
 
         num_atoms = 0
         title = None
@@ -78,6 +82,9 @@ class TXYZMol:
 
         for (line_idx, line) in enumerate(contents):
             line = line.rstrip()
+            if len(line) == 0:
+                continue
+
             # title line
             if line_idx == 0:
                 (num_atoms, title) = line.split(maxsplit=1)
@@ -91,10 +98,11 @@ class TXYZMol:
                     box_vector = np.array(
                         [float(x) for x in line.split()[0: 3]]
                     )
-                    print(f">>> PBC box info found: {box_vector}")
                     continue
                 except ValueError:
-                    print(">>> No PBC box info found")
+                    warnings.warn(
+                        RuntimeWarning("No PBC box info found in tinker file.")
+                    )
                 finally:
                     pass
 
@@ -127,3 +135,57 @@ class TXYZMol:
             connectivity=connectivity,
             box_vector=box_vector,
         )
+
+    @staticmethod
+    def traj_from_file(
+        file: str,
+    ) -> List["TXYZMol"]:
+        """Load trajectory in tinker format.
+
+        Args:
+            file (str): Path to trajectory in tinker format, e.g. arc.
+
+        Returns:
+            txyz_traj (List[TXYZMol]): A list of tinker molecule object.
+        """
+        txyz_traj = []
+
+        with open(file, "r") as f:
+            contents = f.readlines()
+
+        try:
+            while len(contents) > 0:
+                tmp_contents = []
+                # number of atoms
+                line = contents.pop(0)
+                arr = line.split(maxsplit=1)
+                num_atoms = int(arr[0])
+                tmp_contents.append(line)
+
+                # check pbc
+                with_pbc = True
+
+                try:
+                    _ = [float(x) for x in contents[0].split()]
+                except ValueError:
+                    with_pbc = False
+                finally:
+                    pass
+
+                if with_pbc:
+                    tmp_contents.append(contents.pop(0))
+
+                tmp_contents += contents[:num_atoms]
+                contents = contents[num_atoms:]
+
+                tmp_contents = "".join(tmp_contents)
+
+                txyz_mol = TXYZMol.from_file(StringIO(tmp_contents))
+                txyz_traj.append(txyz_mol)
+                print(f"Found frame {len(txyz_traj)}")
+        except ValueError:
+            warnings.warn(RuntimeWarning(
+                "The input tinker trajectory file may be incomplete."
+            ))
+        finally:
+            return txyz_traj
