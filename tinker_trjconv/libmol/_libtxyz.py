@@ -87,8 +87,12 @@ class TXYZMol:
 
             # title line
             if line_idx == 0:
-                (num_atoms, title) = line.split(maxsplit=1)
+                arr = line.split()
+
+                num_atoms = arr.pop(0)
                 num_atoms = int(num_atoms)
+
+                title = " ".join(arr)
 
                 continue
 
@@ -181,6 +185,7 @@ class TXYZMol:
                 tmp_contents = "".join(tmp_contents)
 
                 txyz_mol = TXYZMol.from_file(StringIO(tmp_contents))
+                print(txyz_mol)
                 txyz_traj.append(txyz_mol)
                 print(f"Found frame {len(txyz_traj)}")
         except ValueError:
